@@ -93,46 +93,6 @@ static inline void_t read_char_info_bitmap_v3(FILE* stream, uint32_t font_offset
     }
 }
 
-static void_t insert_char_into_bitmap(rt_bitmap_data_t* rt_bitmap_data, rt_font_bitmap_t* rt_font_bitmap, uint32_t x, uint32_t y)
-{
-    uint32_t dst_line   = y;
-    uint32_t dst_byte   = x * rt_bitmap_data->bit_count / 8;
-    uint32_t data_shift = x * rt_bitmap_data->bit_count % 8;
-
-    uint8_t* dst_data  = (uint8_t*) rt_bitmap_data->data;
-             dst_data += dst_byte + dst_line * rt_bitmap_data->line_size;
-
-    uint32_t src_line;
-
-    for (src_line = 0; src_line < rt_font_bitmap->char_height; src_line ++)
-    {
-        uint32_t src_byte;
-
-        for (src_byte = 0; src_byte < rt_font_bitmap->line_size; src_byte ++)
-        {
-            uint8_t* src_data  = (uint8_t*) rt_font_bitmap->char_data;
-                     src_data += src_byte + src_line * rt_font_bitmap->line_size;
-
-            if (data_shift)
-            {
-                *dst_data |= (*src_data) >> (    data_shift);
-                 dst_data ++;
-                *dst_data  = (*src_data) << (8 - data_shift);
-            }
-            else
-            {
-                *dst_data = *src_data;
-                 dst_data ++;
-            }
-        }
-
-        dst_line ++;
-
-        dst_data  = (uint8_t*) rt_bitmap_data->data;
-        dst_data += dst_byte + dst_line * rt_bitmap_data->line_size;
-    }
-}
-
 rt_fontdir_t* get_rt_fontdir(FILE* stream, uint32_t offset)
 {
     // Check for correct compilation
@@ -362,9 +322,16 @@ rt_bitmap_data_t* get_rt_font_bitmap_full(FILE* stream, rt_font_t* rt_font)
     if (! rt_bitmap_data)
         return NULL;
 
-    rt_bitmap_data->bit_count = (rt_font->font_info.version == FONT_VERSION_2) ? 1 : 0; // TODO
-    rt_bitmap_data->width     = rt_font->font_info.maximum_width * 16;
-    rt_bitmap_data->height    = rt_font->font_info.char_height   * 16;
+    uint32_t char_bit_count   = (rt_font->font_info.version == FONT_VERSION_2) ? 1 : 0; // TODO
+    uint32_t char_line_size   = ((rt_font->font_info.maximum_width * char_bit_count) % 8)
+                              ? ((rt_font->font_info.maximum_width * char_bit_count) / 8) + 1
+                              : ((rt_font->font_info.maximum_width * char_bit_count) / 8);
+    uint32_t char_width       = char_line_size * 8 / char_bit_count;
+    uint32_t char_height      = rt_font->font_info.char_height;
+
+    rt_bitmap_data->bit_count = char_bit_count;
+    rt_bitmap_data->width     = char_width  * 16;
+    rt_bitmap_data->height    = char_height * 16;
 
     rt_bitmap_data->line_size = calc_bitmap_line_size(rt_bitmap_data->width, rt_bitmap_data->bit_count);
     rt_bitmap_data->size      = rt_bitmap_data->line_size * rt_bitmap_data->height;
@@ -389,10 +356,21 @@ rt_bitmap_data_t* get_rt_font_bitmap_full(FILE* stream, rt_font_t* rt_font)
             return NULL;
         }
 
-        insert_char_into_bitmap(rt_bitmap_data,
-                                rt_font_bitmap,
-                                (char_id % 16) * rt_font->font_info.maximum_width,
-                                (char_id / 16) * rt_font->font_info.char_height);
+        // Insert symbol into bitmap
+        uint8_t* src_data  = (uint8_t*) rt_font_bitmap->char_data;
+
+        uint8_t* dst_data  = (uint8_t*) rt_bitmap_data->data;
+                 dst_data += (char_id / 16) * char_height * rt_bitmap_data->line_size;
+                 dst_data += (char_id % 16) * char_line_size;
+
+        uint32_t char_line;
+
+        for (char_line = 0; char_line < char_height; char_line ++)
+        {
+            memcpy(dst_data, src_data, rt_font_bitmap->line_size);
+            dst_data += rt_bitmap_data->line_size;
+            src_data += rt_font_bitmap->line_size;
+        }
 
         del_rt_font_bitmap(rt_font_bitmap);
     }
