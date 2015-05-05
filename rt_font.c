@@ -236,19 +236,21 @@ rt_font_t* get_rt_font(FILE* stream, uint32_t offset)
 
     if (rt_font->font_info.version != FONT_VERSION_2)
     {
+/*
+        //
+        // TODO
+        //
+
         font_extention_t font_extention;
 
         if (fread(&font_extention, 1, sizeof(font_extention_t), stream) != sizeof(font_extention_t))
+*/
         {
             if (rt_font->font_face) del_rt_string(rt_font->font_face);
             if (rt_font->dev_name)  del_rt_string(rt_font->dev_name);
             free(rt_font);
             return NULL;
         }
-
-        //
-        // TODO
-        //
     }
 
     // Get character table
